@@ -2,22 +2,55 @@
 <meta charset="utf-8">
 <style>
 
-    .node circle {
-        fill: #999;
-    }
-
     .node text {
-        font: 11px sans-serif;
+        visibility: hidden;
     }
 
     .link {
         fill: none;
         stroke-opacity: 0.6;
-        stroke-width: 2px;
+        stroke-width: 3px;
+    }
+
+    .node--hover circle{
+        stroke: #000;
+        stroke-width: 2.5px;
+        fill: #555;
+    }
+
+    .node--hover text {
+        visibility: visible;
+        font: 12px sans-serif;
+        font-weight: 600;
+        fill: #000;
+    }
+
+    .node--hover path {
+        stroke: #000;
+        stroke-opacity: 0.9;
+    }
+
+    #tooltip {
+        font: 12px sans-serif;
     }
 
 </style>
 <svg width="800" height="800"></svg>
+<table id="tb-stats"></table>
+<script type="text/javascript">
+    tb = document.getElementsByTagName("table")[0];
+    varArray = ["Number of Users", "Avg. Problems"];
+    varArray.forEach(function(name){
+        tr = document.createElement("tr");
+        th = document.createElement("th");
+        th.innerHTML = name;
+        td = document.createElement("td");
+        tb.appendChild(tr);
+        tr.appendChild(th);
+        tr.appendChild(td);
+    });
+</script>
+
 
 <script src="https://d3js.org/d3.v4.min.js"></script>
 <script>
@@ -25,7 +58,7 @@
     var svg = d3.select("svg"),
         width = +svg.attr("width"),
         height = +svg.attr("height"),
-        g = svg.append("g").attr("transform", "translate(" + (width / 2 - 15) + "," + (height / 2 + 25) + ")");
+        g = svg.append("g").attr("transform", "translate(" + (width / 2 - 10) + "," + (height / 2 - 10) + ")");
 
     var tree = d3.cluster()
         .size([360, 300])
@@ -33,43 +66,66 @@
 
     var color = d3.scaleLinear()
         .domain([0, 6])
-        .range(["hsl(152,100%,100%)", "hsl(228,40%,50%)"])
+        .range(["hsl(150,100%,100%)", "hsl(230,35%,45%)"])
         .interpolate(d3.interpolateHcl);
 
     function radialDendrogram(json_f) {
         d3.json(json_f, function(error, data) {
             if (error) throw error;
 
-            root = tree(d3.hierarchy(data));
+            var root = tree(d3.hierarchy(data));
 
-            var link = g.selectAll(".link")
-                .data(root.descendants().slice(1))
-                .enter().append("path")
-                .attr("class", "link")
-                .attr("stroke", function(d) {return color(d.depth);})
-                .attr("d", function(d) {
-                    return "M" + project(d.x, d.y)
-                        + "C" + project(d.x, (d.y + d.parent.y) / 2)
-                        + " " + project(d.parent.x, (d.y + d.parent.y) / 2)
-                        + " " + project(d.parent.x, d.parent.y);
-                });
-
-            var node = g.selectAll(".node")
+            var nodes = g.selectAll(".node")
                 .data(root.descendants())
                 .enter().append("g")
                 .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
-                .attr("transform", function(d) { return "translate(" + project(d.x, d.y) + ")"; });
+                .attr("transform", function(d) { return "translate(" + project(d.x, d.y) + ")"; })
+                .each(function(d) { d.node = this; })
+                .on("mouseover", hovered(true))
+                .on("mouseout", hovered(false));
 
-            node.append("circle")
-                .attr("r", function(d) {return d.children ? 2 : Math.log(d.data.size*10); });
+            nodes.append("path")
+                .attr("class", "link")
+                .attr("stroke", function(d) {return color(d.depth);})
+                .attr("d", function(d) {
+                    if (d.parent) {
+                        function offset (coord) {
+                            off_x = project(d.x, d.y)[0];
+                            off_y = project(d.x, d.y)[1];
+                            return (coord[0]-off_x) + " " + (coord[1]-off_y);
+                        }
+                        return "M 0 0 "
+                            + "C" + offset(project(d.x, (d.y + d.parent.y) / 2))
+                            + " " + offset(project(d.parent.x, (d.y + d.parent.y) / 2))
+                            + " " + offset(project(d.parent.x, d.parent.y));
+                    }
+                });
 
-            node.append("text")
+            var leaves = nodes.filter(function(d) { return !d.children; });
+
+            leaves.append("circle")
+                .attr("r", function(d) { return Math.log(d.data.size*20); })
+                .attr("fill", function(d) {return color(d.depth);})
+                .attr("fill-opacity", 0.8)
+                .attr("stroke", function(d) {return color(d.depth);})
+                .attr("stroke-width", 2);
+
+            leaves.append("text")
                 .attr("dy", ".31em")
-                .attr("x", function(d) { return d.x < 180 === !d.children ? 6 : -6; })
+                .attr("x", function(d) { return d.x < 180 === !d.children ? 10 : -10; })
                 .attr("text-anchor", function(d) { return d.x < 180 === !d.children ? "start" : "end"; })
                 .attr("transform", function(d) { return "rotate(" + (d.x < 180 ? d.x - 90 : d.x + 90) + ")"; })
-                .text(function(d) { return d.data.name; })
-            ;
+                .attr("fill", function(d) {return color(d.depth);})
+                .text(function(d) { return d.data.name; });
+
+            var internals = nodes.filter(function(d) { return d.children; });
+
+            internals.append("circle")
+                .attr("r", 3)
+                .attr("fill", "#555");
+
+            g.append("text").attr("id", "tooltip");
+
         });
     }
 
@@ -78,6 +134,51 @@
         return [radius * Math.cos(angle), radius * Math.sin(angle)];
     }
 
+    function hovered(hover) {
+        return function(d) {
+            console.log(d.descendants());
+            d3.selectAll(d.descendants()
+                .map(function(x) { return x.node; }))
+                .classed("node--hover", hover);
+
+            d3.select("#tooltip")
+                .style("visibility", hover ? "visible" : "hidden")
+                .attr("transform", "translate(" + project(d.x, d.y) + ")")
+                .attr("x", d.x < 180 ? -10 : 10)
+                .attr("text-anchor", d.x < 180 ? "end" : "start")
+                .text( d.children ? numUser(d)+" Users, "+avgSize(d)+" Problem(s) on Avg" : d.data.size+" Problem(s)");
+
+            tds = document.getElementById("tb-stats").getElementsByTagName("td");
+            tds[0].innerHTML = numUser(d);
+            tds[1].innerHTML = avgSize(d);
+        };
+    }
+
+    function numUser(d) {
+        num = 0;
+        d3.selectAll(d.descendants()
+            .map(function(d) { return d.node; }))
+            .filter(function(d) { return !d.children; })
+            .each(function(d) {
+                num += 1;
+            });
+        return num;
+    }
+
+    function avgSize(d){
+        tot_size = 0;
+        num = 0;
+        d3.selectAll(d.descendants()
+            .map(function(d) { return d.node; }))
+            .filter(function(d) { return !d.children; })
+            .each(function(d) {
+                tot_size += d.data.size;
+                num += 1;
+            });
+        return Math.round(tot_size/num);
+     }
+
     radialDendrogram("d3-dendrogram.json");
 
 </script>
+
