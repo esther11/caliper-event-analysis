@@ -15,7 +15,7 @@
     .node--hover circle{
         stroke: #000;
         stroke-width: 2.5px;
-        fill: #555;
+        fill: #000;
     }
 
     .node--hover text {
@@ -27,19 +27,73 @@
 
     .node--hover path {
         stroke: #000;
-        stroke-opacity: 0.9;
+        stroke-opacity: 0.8;
+    }
+
+    select {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: wrap;
+        margin: 0 auto;
     }
 
     #tooltip {
         font: 12px sans-serif;
     }
 
+    #tb-stats {
+        display: inline-block;
+        margin-top: 50px;
+        margin-bottom: 250px;
+        text-align: left;
+    }
+
+    #tb-stats td {
+        padding-left: 12px;
+    }
+
 </style>
+
+
 <svg width="800" height="800"></svg>
-<table id="tb-stats"></table>
+
+<div style="display: inline-block">
+    <select id="select-course" onchange="loadJson()"></select>
+    <table id="tb-stats"></table>
+</div>
+
 <script type="text/javascript">
-    tb = document.getElementsByTagName("table")[0];
-    varArray = ["Number of Users", "Avg. Problems"];
+    course_dropdown = document.getElementById("select-course");
+    courseArray = ["mcdb310",
+        "phy135",
+        "phy140",
+        "phy235",
+        "phy240",
+        "ch130",
+        "stat250",
+        "eecs314"
+    ];
+    courseArray.forEach(function (course) {
+        opt = document.createElement("option");
+        opt.text = course;
+        opt.value = course;
+        course_dropdown.appendChild(opt);
+    })
+
+
+    tb = document.getElementById("tb-stats");
+    varArray = ["Number of Users",
+        "Problems Attempted",
+        "Solved Problems Percentage",
+        "Unsolved Problems Percentage",
+        "Skipped Problems Percentage",
+        "Skip Rate",
+        "Avg. Complete Duration",
+        "Avg. Skip Duration",
+        "First Complete Accuracy",
+        "Avg. Attempt Count Before Problem Solved",
+        "Avg. Duration Before Problem Solved"
+    ];
     varArray.forEach(function(name){
         tr = document.createElement("tr");
         th = document.createElement("th");
@@ -54,24 +108,26 @@
 
 <script src="https://d3js.org/d3.v4.min.js"></script>
 <script>
-
-    var svg = d3.select("svg"),
-        width = +svg.attr("width"),
-        height = +svg.attr("height"),
-        g = svg.append("g").attr("transform", "translate(" + (width / 2 - 10) + "," + (height / 2 - 10) + ")");
-
-    var tree = d3.cluster()
-        .size([360, 300])
-        .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });
-
-    var color = d3.scaleLinear()
-        .domain([0, 6])
-        .range(["hsl(150,100%,100%)", "hsl(230,35%,45%)"])
-        .interpolate(d3.interpolateHcl);
-
     function radialDendrogram(json_f) {
+
+        var svg = d3.select("svg"),
+            width = +svg.attr("width"),
+            height = +svg.attr("height"),
+            g = svg.append("g").attr("transform", "translate(" + (width / 2 - 10) + "," + (height / 2 - 10) + ")");
+
         d3.json(json_f, function(error, data) {
             if (error) throw error;
+
+            console.log(data);
+
+            var treeSize = d3.hierarchy(data).height;
+
+            var tree = d3.cluster()
+                .size([360, 320])
+                .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });
+
+            var color = d3.scaleSequential(d3.interpolateViridis)
+                            .domain([treeSize, 0]);
 
             var root = tree(d3.hierarchy(data));
 
@@ -104,7 +160,7 @@
             var leaves = nodes.filter(function(d) { return !d.children; });
 
             leaves.append("circle")
-                .attr("r", function(d) { return Math.log(d.data.size*20); })
+                .attr("r", function(d) { return Math.log(d.data.TotalProblem*20); })
                 .attr("fill", function(d) {return color(d.depth);})
                 .attr("fill-opacity", 0.8)
                 .attr("stroke", function(d) {return color(d.depth);})
@@ -136,7 +192,6 @@
 
     function hovered(hover) {
         return function(d) {
-            console.log(d.descendants());
             d3.selectAll(d.descendants()
                 .map(function(x) { return x.node; }))
                 .classed("node--hover", hover);
@@ -146,11 +201,20 @@
                 .attr("transform", "translate(" + project(d.x, d.y) + ")")
                 .attr("x", d.x < 180 ? -10 : 10)
                 .attr("text-anchor", d.x < 180 ? "end" : "start")
-                .text( d.children ? numUser(d)+" Users, "+avgSize(d)+" Problem(s) on Avg" : d.data.size+" Problem(s)");
+                .text( d.children ? numUser(d)+" Users, "+getAvg(d, 'TotalProblem')+" Problem(s) on Avg" : d.data.TotalProblem+" Problem(s)");
 
             tds = document.getElementById("tb-stats").getElementsByTagName("td");
             tds[0].innerHTML = numUser(d);
-            tds[1].innerHTML = avgSize(d);
+            tds[1].innerHTML = getAvg(d, 'TotalProblem', 1);
+            tds[2].innerHTML = getAvg(d, 'SolvedPercent', 2);
+            tds[3].innerHTML = getAvg(d, 'UnsolvedPercent', 2);
+            tds[4].innerHTML = getAvg(d, 'SkippedPercent', 2);
+            tds[5].innerHTML = getAvg(d, 'SkipRate', 2);
+            tds[6].innerHTML = getAvg(d, 'AvgCompleteDuration', 1);
+            tds[7].innerHTML = getAvg(d, 'AvgSkipDuration', 1);
+            tds[8].innerHTML = getAvg(d, 'FirstCompleteCorrectPercent', 2);
+            tds[9].innerHTML = getAvg(d, 'AvgAttemptUntilCorrect', 1);
+            tds[10].innerHTML = getAvg(d, 'AvgDurationUntilCorrect', 1);
         };
     }
 
@@ -159,26 +223,43 @@
         d3.selectAll(d.descendants()
             .map(function(d) { return d.node; }))
             .filter(function(d) { return !d.children; })
-            .each(function(d) {
+            .each(function() {
                 num += 1;
             });
         return num;
     }
 
-    function avgSize(d){
-        tot_size = 0;
+    function getAvg(d, varName, digits) {
+        digits = digits || 0;
+        tot = 0;
         num = 0;
         d3.selectAll(d.descendants()
             .map(function(d) { return d.node; }))
             .filter(function(d) { return !d.children; })
             .each(function(d) {
-                tot_size += d.data.size;
-                num += 1;
+                if (d.data[varName] !== -1){
+                    tot += d.data[varName];
+                    num += 1;
+                }
             });
-        return Math.round(tot_size/num);
-     }
+        if (num === 0) { return 'N/A'; }
+        return (tot/num).toFixed(digits);
+    }
 
-    radialDendrogram("d3-dendrogram.json");
+</script>
+
+
+<script>
+    file_name = "d3-dendrogram-"+course_dropdown.value+".json";
+    window.onload = radialDendrogram(file_name);
+    console.log("Data sourse: "+file_name);
+
+    function loadJson() {
+        file_name = "d3-dendrogram-"+course_dropdown.value+".json";
+        console.log("Data sourse: "+file_name);
+        d3.select("svg").selectAll("*").remove();
+        radialDendrogram(file_name);
+    }
 
 </script>
 
