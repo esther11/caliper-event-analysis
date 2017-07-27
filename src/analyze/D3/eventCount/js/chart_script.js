@@ -9,10 +9,6 @@ var dateChart = dc.lineChart("#chart-date");
 var volumeChart = dc.barChart("#chart-range-date");
 var charts = [courseChart, weekdayChart, hourChart, dateChart, volumeChart];
 
-var color = d3.scale.linear()
-    .domain([0, 1])
-    .range(['white', 'blue'])
-
 d3.json("login_time.json").get(function(error, data){
 
     if (error) throw error;
@@ -117,8 +113,6 @@ d3.json("login_time.json").get(function(error, data){
         .height(40)
         .margins({top: 0, right: 0, bottom: 20, left: 40})
     ;
-
-
 
 
     dc.renderAll();
